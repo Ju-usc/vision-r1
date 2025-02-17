@@ -1,0 +1,12 @@
+logs/
+images/
+mlruns/
+mlrunss/
+outputs/
+qwen*
+vr1/
+*.zip
+*.pth
+*.txt
+*.jsonl
+*.ipynb
