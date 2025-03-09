@@ -1,6 +1,7 @@
 import re
 import os
 
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 import torch
 from datasets import load_dataset, Dataset
 from transformers import (
@@ -21,12 +22,10 @@ SYSTEM_PROMPT = """Respond in the following format:
 <think>...</think>
 <answer>...</answer>"""
 
-model_name = "./outputs/Qwen-0.5B-GRPO-Count-SFT-v2/checkpoint-9500"
-LOG_FILE = "response_log_7.txt"
-output_dir = (
-    "outputs/Qwen-0.5B-GRPO-Count-R1-beta0_06_lr1e5_ml500_cosine_warmup005_exact_visual"
-)
-run_name = "Qwen-0.5B-GRPO-Count-R1-beta0_06_lr1e5_ml500_cosine_warmup005_exact_visual"
+model_name = "./outputs/Qwen-0.5B-GRPO-Count-SFT/checkpoint-9500"
+LOG_FILE = "response_log.txt"
+output_dir = "outputs/Qwen-0.5B-GRPO-Count-R1"
+run_name = "Qwen-0.5B-GRPO-Count-R1"
 max_pixels = 256 * 256
 processor = AutoProcessor.from_pretrained(
     model_name, max_pixels=max_pixels, use_cache=False
@@ -45,19 +44,15 @@ processor.tokenizer.padding_side = "left"
 for param in model.parameters():
     param.requires_grad = False
 
-# for param in model.lm_head.parameters():
-#     param.requires_grad = True
-
 for layer in model.model.layers[:5]:
     for param in layer.parameters():
         param.requires_grad = True
 
 for name, param in model.visual.named_parameters():
-    param.requires_grad = False
-
-for name, param in model.visual.named_parameters():
-    if "merger" in name:
+    if "merger.mlp.2" in name:
         param.requires_grad = True
+    else:
+        param.requires_grad = False
 
 
 def extract_xml_answer(text: str) -> str:
@@ -457,9 +452,9 @@ training_args = GRPOConfig(
     learning_rate=1e-5,
     adam_beta1=0.9,
     adam_beta2=0.99,
-    beta=0.06,
+    beta=0.12,
     weight_decay=0.1,
-    lr_scheduler_type="cosine",
+    lr_scheduler_type="constant",
     warmup_ratio=0.05,
     logging_steps=1,
     bf16=True,

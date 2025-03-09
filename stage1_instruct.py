@@ -19,10 +19,10 @@ SYSTEM_PROMPT = """Respond in the following format:
 <think>...</think>
 <answer>...</answer>"""
 
-model_name = "/home/jackson/vision-r1/qwen0.5-vl-0206"
-LOG_FILE = "response_log_v3.txt"
-output_dir = "outputs/Qwen-0.5B-GRPO-Count-SFT-v2_nolmhead"
-run_name = "Qwen-0.5B-GRPO-Count-SFT-v2nolmhead"
+model_name = "jacksonkek/qwen-0.5-vl-custom"
+
+output_dir = "outputs/Qwen-0.5B-GRPO-Count-SFT-base"
+run_name = "Qwen-0.5B-GRPO-Count-SFT-base"
 max_pixels = 256 * 256
 processor = AutoProcessor.from_pretrained(
     model_name, max_pixels=max_pixels, use_cache=False
@@ -30,7 +30,7 @@ processor = AutoProcessor.from_pretrained(
 model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
     model_name,
     torch_dtype=torch.bfloat16,
-    device_map="auto",
+    device_map="cuda",
     attn_implementation="flash_attention_2",
     use_cache=False,
 ).to("cuda")
@@ -40,16 +40,16 @@ processor.tokenizer.padding_side = "left"
 for param in model.parameters():
     param.requires_grad = False
 
-# for param in model.lm_head.parameters():
-#     param.requires_grad = True
-
 for layer in model.model.layers[:5]:
     for param in layer.parameters():
         param.requires_grad = True
 
+
 for name, param in model.visual.named_parameters():
-    if "merger" in name:
+    if "merger.mlp.2" in name:
         param.requires_grad = True
+    else:
+        param.requires_grad = False
 
 
 def is_valid_image(image_dict):
@@ -157,7 +157,9 @@ training_args = SFTConfig(
     max_seq_length=2048,  # Maximum sequence length for input
 )
 
-training_args.remove_unused_columns = False  # Keep unused columns in dataset
+training_args.remove_unused_columns = (
+    False  # Keep unused columns in dataset since we might use it later
+)
 
 
 # Create a data collator to encode text and image pairs
@@ -213,7 +215,7 @@ def collate_fn(examples):
         labels[i, :question_length] = -100
 
     batch["labels"] = labels
-    return batch  #
+    return batch
 
 
 trainer = SFTTrainer(
@@ -224,6 +226,7 @@ trainer = SFTTrainer(
     data_collator=collate_fn,
     tokenizer=processor.tokenizer,
 )
+# Check parameters that are not trainable
 for name, params in model.named_parameters():
     if not params.requires_grad:
         print(name)
