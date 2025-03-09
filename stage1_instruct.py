@@ -1,14 +1,11 @@
 import torch
 
 from datasets import load_dataset, Dataset, Image
-import transformers
 from transformers import (
     Qwen2_5_VLForConditionalGeneration,
     Qwen2_5_VLProcessor,
     AutoProcessor,
 )
-from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import rotate_half
-
 from qwen_vl_utils import process_vision_info
 from trl import SFTConfig, SFTTrainer
 from datasets import disable_caching
@@ -17,36 +14,14 @@ from io import BytesIO
 
 disable_caching()
 
-
-def custom_apply_multimodal_rotary_pos_emb(
-    q, k, cos, sin, mrope_section, unsqueeze_dim=1
-):
-    # Removed: mrope_section = mrope_section * 2 otherwise will cause error
-    cos = torch.cat(
-        [m[i % 3] for i, m in enumerate(cos.split(mrope_section, dim=-1))], dim=-1
-    ).unsqueeze(unsqueeze_dim)
-    sin = torch.cat(
-        [m[i % 3] for i, m in enumerate(sin.split(mrope_section, dim=-1))], dim=-1
-    ).unsqueeze(unsqueeze_dim)
-
-    q_embed = (q * cos) + (rotate_half(q) * sin)
-    k_embed = (k * cos) + (rotate_half(k) * sin)
-    return q_embed, k_embed
-
-
-# Monkey patching the function
-transformers.models.qwen2_5_vl.modeling_qwen2_5_vl.apply_multimodal_rotary_pos_emb = (
-    custom_apply_multimodal_rotary_pos_emb
-)
-
 SYSTEM_PROMPT = """Respond in the following format:
 <think>...</think>
 <answer>...</answer>"""
 
 model_name = "jacksonkek/qwen-0.5-vl-custom"
 
-output_dir = "outputs/Qwen-0.5B-GRPO-Count-SFT-base"
-run_name = "Qwen-0.5B-GRPO-Count-SFT-base"
+output_dir = "outputs/Qwen-0.5B-GRPO-Count-SFT"
+run_name = "Qwen-0.5B-GRPO-Count-SFT"
 max_pixels = 256 * 256
 processor = AutoProcessor.from_pretrained(
     model_name, max_pixels=max_pixels, use_cache=False
@@ -54,13 +29,16 @@ processor = AutoProcessor.from_pretrained(
 model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
     model_name,
     torch_dtype=torch.bfloat16,
-    device_map="cuda",
+    device_map="cuda:0",
     attn_implementation="flash_attention_2",
     use_cache=False,
-).to("cuda")
+)
 processor.tokenizer.padding_side = "left"
 for param in model.parameters():
     param.requires_grad = False
+
+for param in model.lm_head.parameters():
+    param.requires_grad = True
 
 for layer in model.model.layers[:5]:
     for param in layer.parameters():
@@ -154,7 +132,7 @@ training_args = SFTConfig(
     lr_scheduler_type="cosine",  # Type of learning rate scheduler
     # Logging and evaluation
     logging_steps=10,  # Steps interval for logging
-    eval_steps=500,  # Steps interval for evaluation
+    eval_steps=1000,  # Steps interval for evaluation
     eval_strategy="steps",  # Strategy for evaluation
     save_strategy="steps",  # Strategy for saving the model
     save_steps=500,  # Steps interval for saving

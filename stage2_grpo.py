@@ -3,15 +3,14 @@ import os
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 import torch
+import patch_qwen  # noqa: F401
 from datasets import load_dataset, Dataset
-import transformers
 from transformers import (
     AutoTokenizer,
     Qwen2_5_VLForConditionalGeneration,
     Qwen2_5_VLProcessor,
     AutoProcessor,
 )
-from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import rotate_half
 from qwen_vl_utils import process_vision_info
 from trl import GRPOConfig, GRPOTrainer
 from trl.models.utils import unwrap_model_for_generation
@@ -19,33 +18,11 @@ from typing import Any
 from io import BytesIO
 from PIL import Image
 
-
-def custom_apply_multimodal_rotary_pos_emb(
-    q, k, cos, sin, mrope_section, unsqueeze_dim=1
-):
-    # Removed: mrope_section = mrope_section * 2 otherwise will cause error
-    cos = torch.cat(
-        [m[i % 3] for i, m in enumerate(cos.split(mrope_section, dim=-1))], dim=-1
-    ).unsqueeze(unsqueeze_dim)
-    sin = torch.cat(
-        [m[i % 3] for i, m in enumerate(sin.split(mrope_section, dim=-1))], dim=-1
-    ).unsqueeze(unsqueeze_dim)
-
-    q_embed = (q * cos) + (rotate_half(q) * sin)
-    k_embed = (k * cos) + (rotate_half(k) * sin)
-    return q_embed, k_embed
-
-
-# Monkey patching the function
-transformers.models.qwen2_5_vl.modeling_qwen2_5_vl.apply_multimodal_rotary_pos_emb = (
-    custom_apply_multimodal_rotary_pos_emb
-)
-
 SYSTEM_PROMPT = """Respond in the following format:
 <think>...</think>
 <answer>...</answer>"""
 
-model_name = "./outputs/Qwen-0.5B-GRPO-Count-SFT-v2/checkpoint-9500"
+model_name = "/home/jackson/vision-r1/outputs/Qwen-0.5B-GRPO-Count-SFT/checkpoint-1500"
 LOG_FILE = "response_log.txt"
 output_dir = "outputs/Qwen-0.5B-GRPO-Count-R1"
 run_name = "Qwen-0.5B-GRPO-Count-R1"
@@ -59,13 +36,16 @@ model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
     device_map="auto",
     attn_implementation="flash_attention_2",
     use_cache=False,
-).to("cuda")
+)
 tokenizer = AutoTokenizer.from_pretrained(model_name, use_cache=False)
 tokenizer.padding_size = "left"
 processor.tokenizer.padding_side = "left"
 
 for param in model.parameters():
     param.requires_grad = False
+
+for param in model.lm_head.parameters():
+    param.requires_grad = True
 
 for layer in model.model.layers[:5]:
     for param in layer.parameters():
@@ -498,7 +478,7 @@ training_args = GRPOConfig(
 trainer = VLGRPOTrainer(
     model=model,
     processing_class=tokenizer,
-    reward_funcs=[correctness_reward_func],
+    reward_funcs=[strict_format_reward_func, correctness_reward_func],
     args=training_args,
     train_dataset=train_dataset,
 )

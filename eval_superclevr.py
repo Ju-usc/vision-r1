@@ -4,11 +4,11 @@ import torch
 import json
 from tqdm import tqdm
 import re
+import os
 
-
-MODEL_PATH = "./outputs/Qwen-0.5B-GRPO-Count-R1-beta0_06_lr1e5_ml500_exact_nolmhead_visual/checkpoint-600"
+MODEL_PATH = "./outputs/Qwen-0.5B-GRPO-Count-SFT-base/checkpoint-500"
 BSZ = 64  # reduce it if GPU OOM
-OUTPUT_PATH = "./logs/counting_results_superclevr_200_qwen2vl_2b_instruct_grpo_100.json"
+OUTPUT_PATH = "./logs/counting_results_superclevr.json"
 PROMPT_PATH = "./superclevr_test_200_counting.jsonl"
 SYSTEM_PROMPT = """Respond in the following format:
 <think>...</think>
@@ -24,7 +24,7 @@ model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
     device_map="auto",
     attn_implementation="flash_attention_2",
     use_cache=False,
-).to("cuda")
+)
 
 processor = AutoProcessor.from_pretrained(MODEL_PATH)
 
@@ -128,7 +128,9 @@ for input_example, model_output in zip(data, all_outputs):
 accuracy = correct_number / len(data) * 100
 print(f"\nAccuracy: {accuracy:.2f}%")
 
-# Save results to a JSON file
+output_dir = os.path.dirname(OUTPUT_PATH)
+os.makedirs(output_dir, exist_ok=True)
+
 output_path = OUTPUT_PATH
 with open(output_path, "w") as f:
     json.dump({"accuracy": accuracy, "results": final_output}, f, indent=2)
