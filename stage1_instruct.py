@@ -2,7 +2,6 @@ import torch
 
 from datasets import load_dataset, Dataset, Image
 from transformers import (
-    AutoTokenizer,
     Qwen2_5_VLForConditionalGeneration,
     Qwen2_5_VLProcessor,
     AutoProcessor,
@@ -34,8 +33,6 @@ model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
     attn_implementation="flash_attention_2",
     use_cache=False,
 ).to("cuda")
-tokenizer = AutoTokenizer.from_pretrained(model_name, use_cache=False)
-tokenizer.padding_size = "left"
 processor.tokenizer.padding_side = "left"
 for param in model.parameters():
     param.requires_grad = False
