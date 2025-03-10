@@ -1,5 +1,5 @@
-This is all the training files related to this [blog]()
-For integrate a pertrained vision encoder with language model refer [here]() (Support Qwen 2.5)
+This is all the training files related to this [blog](https://jacksoncakes.com/2025/03/10/can-an-llm-learn-to-see-fine-tuning-qwen-05b-for-vision-tasks-with-sft-grpo/)
+For integrate a pertrained vision encoder with language model refer [here](https://github.com/JacksonCakes/vision-r1/blob/main/merge_llm_into_vlm.ipynb) (Support Qwen 2.5)
 
 ## Requirements
 use `uv` for faster installation.
@@ -39,4 +39,4 @@ python eval_superclevr.py
 ```
 
 ## Acknowledgements
-Special thanks [Deep-Agent/R1-V](https://github.com/Deep-Agent/R1-V) for open source the dataset. [Glows.ai](https://glows.ai/) for supporting the compute!
+Special thanks [Deep-Agent/R1-V](https://github.com/Deep-Agent/R1-V) for open source the dataset. [Glows.ai](https://glows.ai/invite/Glows-3x23oo25?utm_source=Blog&utm_medium=KOL_Post&utm_campaign=Glows-3x23oo25&utm_content=AIengineer) for supporting the compute!
