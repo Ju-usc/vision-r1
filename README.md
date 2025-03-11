@@ -1,5 +1,5 @@
 This is all the training files related to this [blog](https://jacksoncakes.com/2025/03/10/can-an-llm-learn-to-see-fine-tuning-qwen-05b-for-vision-tasks-with-sft-grpo/)
-For integrate a pertrained vision encoder with language model refer [here](https://github.com/JacksonCakes/vision-r1/blob/main/merge_llm_into_vlm.ipynb) (Support Qwen 2.5)
+For integrate a pertrained vision encoder with language model refer [here](https://github.com/JacksonCakes/vision-r1/blob/main/merge_llm_into_vlm.ipynb) (Support Qwen 2.5) or you can download the integrated model at [huggingface](https://huggingface.co/jacksonkek/qwen-0.5-vl-custom)
 
 ## Requirements
 use `uv` for faster installation.
