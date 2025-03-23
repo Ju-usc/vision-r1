@@ -256,6 +256,10 @@ def collate_fn(examples):
 
 
 class VLGRPOTrainer(GRPOTrainer):
+    def __init__(self, *args, scale_rewards=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.scale_rewards = scale_rewards
+
     def compute_loss(
         self, model, inputs, return_outputs=False, num_items_in_batch=None
     ):
@@ -404,7 +408,9 @@ class VLGRPOTrainer(GRPOTrainer):
         std_grouped_rewards = std_grouped_rewards.repeat_interleave(
             self.num_generations, dim=0
         )
-        advantages = (rewards - mean_grouped_rewards) / (std_grouped_rewards + 1e-4)
+        advantages = rewards - mean_grouped_rewards
+        if self.scale_rewards:
+            advantages /= std_grouped_rewards + 1e-4
 
         # x - x.detach() allows for preserving gradients from x
         per_token_loss = torch.exp(
