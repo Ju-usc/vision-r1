@@ -19,6 +19,8 @@ from typing import Any
 from io import BytesIO
 from PIL import Image
 
+from load_helper import get_dev_stage_datasets
+
 SYSTEM_PROMPT = """Look at this food image and create a recipe in XML format:
 
 Example format:
@@ -203,15 +205,15 @@ def format_data(sample):
         },
     }
 
-def get_count_data() -> Dataset:
-    data = load_dataset(
-        "MMInstruction/Clevr_CoGenT_TrainA_70K_Complex", split="train[:10000]"
+def get_count_data(root: str = "data/dev_stage"):
+    train_ds, dev_ds, test_ds = get_dev_stage_datasets(
+        root=root,
+        map_to_prompt_fn=format_data
     )
-    data = data.map(format_data, remove_columns=["image"], num_proc=2)
-    return data
+    return train_ds, dev_ds, test_ds
 
 
-train_dataset = get_count_data()
+train_dataset, eval_dataset, test_dataset = get_count_data()
 
 
 # def detect_format(text: str) -> bool:
