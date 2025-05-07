@@ -72,7 +72,7 @@ model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
     model_name,
     torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32,  # Use bfloat16 for CUDA
     device_map="auto" if device == "cuda" else None,  # Don't use device_map for CPU
-    use_flash_attention_2=False,  # Disable flash attention to avoid dtype issues
+    attn_implementation="flash_attention_2",
     use_cache=False,
 )
 
@@ -855,13 +855,13 @@ training_args = GRPOConfig(
     adam_beta2=0.99,
     beta=0.12,
     weight_decay=0.05, # high weight decay for small dataset to improve generalization
-    lr_scheduler_type="cosine", # small dataset for fine-tuning as it want to make large initial progress and then refine gently
+    lr_scheduler_type="constant", # small dataset for fine-tuning as it want to make large initial progress and then refine gently
     warmup_ratio=0.1, # longer warmup to stabilize training
     logging_steps=1,
     bf16=True if device == "cuda" else False,  # Only use bf16 on CUDA
     fp16=False,  # Don't use fp16 on CPU
     per_device_train_batch_size=1,
-    gradient_accumulation_steps=16,
+    gradient_accumulation_steps=4,
     num_generations=2 if device == "cuda" else 2,  # Reduce for CPU
     max_prompt_length=None,
     max_completion_length=500,
