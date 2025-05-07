@@ -23,6 +23,7 @@ All PIL images are loaded in RGB.
 from __future__ import annotations
 
 import json
+import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import List, Tuple, Callable
@@ -43,11 +44,50 @@ __all__ = [
 
 def parse_recipe_xml(xml_str: str) -> Tuple[str, List[str], List[str]]:
     """Return (title, ingredients list, steps list) from the <recipe> XML."""
-    root = ET.fromstring(xml_str)
-    title = (root.findtext("title") or "Unknown").strip()
-    ings  = [n.text.strip() for n in root.find("ingredients").iterfind("ingredient")]
-    steps = [n.text.strip() for n in root.find("instructions").iterfind("step")]
-    return title, ings, steps
+    try:
+        # Clean up common XML issues
+        xml_str = xml_str.replace('&', '&amp;')  # Handle unescaped ampersands
+        
+        # Try to parse the XML
+        root = ET.fromstring(xml_str)
+        
+        # Extract title with fallback
+        title = "Unknown"
+        try:
+            title_elem = root.find("title")
+            if title_elem is not None and title_elem.text is not None:
+                title = title_elem.text.strip()
+        except (AttributeError, TypeError):
+            pass
+            
+        # Extract ingredients with fallback
+        ings = []
+        try:
+            ingredients_elem = root.find("ingredients")
+            if ingredients_elem is not None:
+                for ing_elem in ingredients_elem.iterfind("ingredient"):
+                    if ing_elem.text is not None:
+                        ings.append(ing_elem.text.strip())
+        except (AttributeError, TypeError):
+            pass
+            
+        # Extract steps with fallback
+        steps = []
+        try:
+            instructions_elem = root.find("instructions")
+            if instructions_elem is not None:
+                for step_elem in instructions_elem.iterfind("step"):
+                    if step_elem.text is not None:
+                        steps.append(step_elem.text.strip())
+        except (AttributeError, TypeError):
+            pass
+            
+        return title, ings, steps
+    
+    except ET.ParseError as e:
+        print(f"XML Parse Error: {e} in:\n{xml_str[:100]}...")
+        # Return default values on parse error
+        return "Unknown Recipe", ["Error parsing ingredients"], ["Error parsing steps"]
 
 # ---------------------------------------------------------------------------
 # JSONL merging / loading helpers
@@ -59,9 +99,31 @@ def merge_pair(rec_line: str, vec_line: str):
     vec  = json.loads(vec_line)
 
     title, ings, steps = parse_recipe_xml(rec["recipe_xml"])
+    
+    # Fix Windows paths to Mac paths
+    image_path = rec["image_path"]
+    if image_path.startswith("C:\\"):
+        # Extract just the image filename
+        filename = image_path.split("\\")[-1]
+        # Create path relative to current directory
+        image_path = os.path.join(os.getcwd(), "Food Images", "Food Images", filename)
+    
+    try:
+        # Try to open the image with the potentially fixed path
+        img = Image.open(image_path).convert("RGB")
+    except FileNotFoundError:
+        print(f"Could not find image at {image_path}")
+        # Create a small blank image as a placeholder
+        img = Image.new('RGB', (224, 224), color='gray')
+        
+    # Convert PIL Image to bytes for serialization
+    import io
+    img_byte_arr = io.BytesIO()
+    img.save(img_byte_arr, format='PNG')
+    img_bytes = img_byte_arr.getvalue()
 
     return {
-        "image"                   : Image.open(rec["image_path"]).convert("RGB"),
+        "image"                   : img_bytes,  # Store as binary data
         "title"                   : title,
         "ingredients"             : ings,
         "instructions"            : steps,

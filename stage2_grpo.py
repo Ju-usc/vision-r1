@@ -56,11 +56,15 @@ max_pixels = 256 * 256
 processor = AutoProcessor.from_pretrained(
     model_name, max_pixels=max_pixels, use_cache=False
 )
+# Check if CUDA is available, otherwise use CPU
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"Using device: {device}")
+
 model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
     model_name,
-    torch_dtype=torch.bfloat16,
-    device_map="auto",
-    attn_implementation="flash_attention_2",
+    torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32,  # Use float32 for CPU
+    device_map="auto" if device == "cuda" else None,  # Don't use device_map for CPU
+    # Removed flash_attention_2 requirement since it's not installed
     use_cache=False,
 )
 tokenizer = AutoTokenizer.from_pretrained(model_name, use_cache=False)
@@ -501,11 +505,15 @@ def is_conversational(example: dict[str, Any]) -> bool:
 
 def collate_fn(examples):
     for idx, item in enumerate(examples):
+        # Extract the system prompt
+        system_prompt = item["prompt"][0]["content"][0]["text"]
+        
+        # Create a new prompt structure
         new_prompt = [
             {
                 "role": "system",
                 "content": [
-                    {"type": "text", "text": item["prompt"][0]["content"][0]["text"]}
+                    {"type": "text", "text": system_prompt}
                 ],
             },
             {
@@ -513,14 +521,15 @@ def collate_fn(examples):
                 "content": [
                     {
                         "type": "image",
-                        "image": Image.open(
-                            BytesIO(item["prompt"][1]["content"][0]["image"]["bytes"])
-                        ),
+                        # Use the image directly if it's already a PIL Image, otherwise try to load it from bytes
+                        "image": item["prompt"][1]["content"][0]["image"] if isinstance(item["prompt"][1]["content"][0]["image"], Image.Image) else Image.open(BytesIO(item["prompt"][1]["content"][0]["image"])),
                     },
-                    {
+                    # Check if there's a text prompt in the user content
+                    # We don't have this in our format_data, but this accommodates the original structure
+                    *([{
                         "type": "text",
                         "text": item["prompt"][1]["content"][1]["text"],
-                    },
+                    }] if len(item["prompt"][1]["content"]) > 1 else []),
                 ],
             },
         ]
@@ -535,7 +544,7 @@ def collate_fn(examples):
 
     batch = processor(
         text=texts, images=image_inputs, videos=None, return_tensors="pt", padding=True
-    ).to("cuda")
+    ).to(device)
 
     labels = batch["input_ids"].clone()
     labels[labels == processor.tokenizer.pad_token_id] = -100
@@ -771,10 +780,11 @@ training_args = GRPOConfig(
     lr_scheduler_type="constant",
     warmup_ratio=0.05,
     logging_steps=1,
-    bf16=True,
+    bf16=True if device == "cuda" else False,  # Only use bf16 on CUDA
+    fp16=False,  # Don't use fp16 on CPU
     per_device_train_batch_size=1,
     gradient_accumulation_steps=4,
-    num_generations=8,
+    num_generations=4 if device == "cuda" else 2,  # Reduce for CPU
     max_prompt_length=None,
     max_completion_length=500,
     num_train_epochs=2,
