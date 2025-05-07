@@ -9,3 +9,4 @@ vr1/
 *.pth
 *.txt
 *.jsonl
+myenv/

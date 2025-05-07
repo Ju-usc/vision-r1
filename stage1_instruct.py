@@ -18,10 +18,10 @@ SYSTEM_PROMPT = """Respond in the following format:
 <think>...</think>
 <answer>...</answer>"""
 
-model_name = "jacksonkek/qwen-0.5-vl-custom"
+model_name = "Qwen/Qwen2.5-VL-3B-Instruct"
 
-output_dir = "outputs/Qwen-0.5B-GRPO-Count-SFT"
-run_name = "Qwen-0.5B-GRPO-Count-SFT"
+output_dir = "outputs/Qwen-3B-GRPO-Count-SFT"
+run_name = "Qwen-3B-GRPO-Count-SFT"
 max_pixels = 256 * 256
 processor = AutoProcessor.from_pretrained(
     model_name, max_pixels=max_pixels, use_cache=False

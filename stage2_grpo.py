@@ -18,9 +18,30 @@ from typing import Any
 from io import BytesIO
 from PIL import Image
 
-SYSTEM_PROMPT = """Respond in the following format:
-<think>...</think>
-<answer>...</answer>"""
+SYSTEM_PROMPT = """Look at this food image and create a recipe in XML format:
+
+Example format:
+
+<think>think step by step to infer the recipe from the image</think>
+<recipe>
+  <title>Name of the dish</title>
+  <ingredients>
+    <ingredient>Quantity and ingredient (e.g., 2 tbsp olive oil)</ingredient>
+    <!-- Add more ingredients as needed -->
+  </ingredients>
+  <instructions>
+    <step>1. Preheat the oven to 350°F.</step>
+    <!-- Add more steps as needed -->
+  </instructions>
+</recipe>
+
+Format requirements:
+- Follow the exact XML structure shown above
+- List each ingredient in a separate <ingredient> tag with quantity when possible
+- Present each cooking step in a separate <step> tag
+- Use clear, concise language throughout
+- Do not generate any text outside of the <recipe> tags and <think> tags
+"""
 
 model_name = "/home/jackson/vision-r1/outputs/Qwen-0.5B-GRPO-Count-SFT/checkpoint-1500"
 LOG_FILE = "response_log.txt"
@@ -58,10 +79,38 @@ for name, param in model.visual.named_parameters():
         param.requires_grad = False
 
 
-def extract_xml_answer(text: str) -> str:
-    answer = text.split("<answer>")[-1]
-    answer = answer.split("</answer>")[0]
-    return answer.strip()
+# def extract_xml_answer(text: str) -> str:
+#     answer = text.split("<answer>")[-1]
+#     answer = answer.split("</answer>")[0]
+#     return answer.strip()
+
+
+# def format_data(sample):
+#     return {
+#         "prompt": [
+#             {
+#                 "role": "system",
+#                 "content": [{"type": "text", "text": SYSTEM_PROMPT}],
+#             },
+#             {
+#                 "role": "user",
+#                 "content": [
+#                     {
+#                         "type": "image",
+#                         "image": sample["image"],
+#                     },
+#                     {
+#                         "type": "text",
+#                         "text": f"{sample['problem']}",
+#                     },
+#                 ],
+#             },
+#         ],
+#         "answer": {
+#             "role": "assistant",
+#             "content": [{"type": "text", "text": sample["solution"]}],
+#         },
+#     }
 
 
 def format_data(sample):
@@ -76,21 +125,22 @@ def format_data(sample):
                 "content": [
                     {
                         "type": "image",
-                        "image": sample["image"],
-                    },
-                    {
-                        "type": "text",
-                        "text": f"{sample['problem']}",
+                        "image": sample["image"], #PIL Image object
                     },
                 ],
             },
         ],
         "answer": {
             "role": "assistant",
-            "content": [{"type": "text", "text": sample["solution"]}],
+            "content": [{"type": "text", "text": sample["title"]}],
+            "metadata": {
+                "ingredients": sample["ingredients"],  # list of string
+                "instructions": sample["instructions"],  # list of string
+                "ingredients_embeddings": sample["ingredients_embeddings"],  # list of float
+                "instructions_embeddings": sample["instructions_embeddings"],  # list of float
+            },
         },
     }
-
 
 def get_count_data() -> Dataset:
     data = load_dataset(
@@ -103,18 +153,85 @@ def get_count_data() -> Dataset:
 train_dataset = get_count_data()
 
 
+# def detect_format(text: str) -> bool:
+#     """
+#     Returns True if the text exactly follows the format:
+
+#     <think>...</think>
+#     <answer>...</answer>
+
+#     where '...' can be any content (including newlines), and there is a newline separating
+#     the closing </think> tag and the opening <answer> tag.
+#     """
+#     pattern = r"^<think>([\s\S]*?)</think>\n<answer>([\s\S]*?)</answer>$"
+#     return re.fullmatch(pattern, text) is not None
+
 def detect_format(text: str) -> bool:
     """
-    Returns True if the text exactly follows the format:
+    Strictly validate that the model’s text is in the form
 
-    <think>...</think>
-    <answer>...</answer>
+        <think> … </think>
+        <recipe>
+          <title>…</title>
+          <ingredients>
+            <ingredient> … </ingredient>+
+          </ingredients>
+          <instructions>
+            <step> … </step>+
+          </instructions>
+        </recipe>
 
-    where '...' can be any content (including newlines), and there is a newline separating
-    the closing </think> tag and the opening <answer> tag.
+    If – and only if – **all** structural constraints are met, return 1.0;
+    otherwise return 0.0.  (GRPO expects a deterministic binary reward.)
     """
-    pattern = r"^<think>([\s\S]*?)</think>\n<answer>([\s\S]*?)</answer>$"
-    return re.fullmatch(pattern, text) is not None
+
+    text = completion.strip()
+
+    # ──────────────────────────────────────────────────────────────
+    # Regex design notes
+    # ──────────────────────────────────────────────────────────────
+    #  • ^ … $         → anchor entire string (no junk before/after)
+    #  • (?:(?!<tag>).)*?  → tempered greedy token: consumes anything
+    #                       *except* the opening of that <tag> again,
+    #                       so we guarantee “exactly one” occurrence.
+    #  • [^<]+          → at least one character inside the leaf tags
+    #  • DOTALL flag    → "." matches newlines so pretty printing works
+    #  • IGNORECASE     → tags are case-insensitive (conservative choice)
+    #
+    # We only insist on *one* <ingredient> and *one* <step> to keep the
+    # check simple; the generator is free to add more – the look-ahead
+    # guards allow multiple as long as the outer structure is intact.
+    # ──────────────────────────────────────────────────────────────
+    recipe_regex = r"""
+            ^<think>                             # single think section …
+                (?:(?!<think>).)*?               #   … no nested <think>
+            </think>\s*                          # end </think> (trim ws)
+            <recipe>                             # single recipe section
+                (?:(?!<recipe>).)*?              #   … no nested <recipe>
+
+                <title>[^<]+</title>             # required title text
+
+                (?:(?!<recipe>).)*?              # anything until ingredients
+                <ingredients>                    # open ingredients
+                    (?:(?!</ingredients>).)*?    #   stuff but not </ingredients>
+                    <ingredient>[^<]+</ingredient> # ≥1 ingredient
+                    (?:(?!</ingredients>).)*?    #   (possibly more)
+                </ingredients>                   # close ingredients
+
+                (?:(?!<recipe>).)*?              # anything until instructions
+                <instructions>                   # open instructions
+                    (?:(?!</instructions>).)*?   #   stuff but not </instructions>
+                    <step>[^<]+</step>           # ≥1 step
+                    (?:(?!</instructions>).)*?   #   (possibly more)
+                </instructions>                  # close instructions
+
+                (?:(?!<recipe>).)*?              # anything else but no new <recipe>
+            </recipe>$                           # close recipe – end of string
+        """
+
+    # Compile once for speed and readability
+    pattern = re.compile(recipe_regex, re.DOTALL | re.IGNORECASE | re.VERBOSE)
+    return pattern.search(text) is not None
 
 
 # Reward functions
