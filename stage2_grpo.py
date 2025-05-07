@@ -465,7 +465,7 @@ def strict_format_reward_func(completions, **kwargs) -> list[float]:
     
     # Print a sample of what the model is generating
     if responses:
-        print(f"\n==== MODEL OUTPUT SAMPLE ====\n{responses[0][:200]}...\n==== END SAMPLE ====\n")
+        print(f"\n==== MODEL OUTPUT SAMPLE ====\n{responses[0]}\n==== END SAMPLE ====\n")
     
     matches = [detect_format(r) for r in responses]
     reward = [1 if match else 0.0 for match in matches]
