@@ -76,11 +76,11 @@ model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
     device_map="auto" if device == "cuda" else None,  # Don't use device_map for CPU
     use_flash_attention_2=True,
     use_cache=False,
-    quantization_config=bnb_cfg,
+    # quantization_config=bnb_cfg,
 )
 
 # verification print
-print(f"Model loaded successfully with quantization_config={model.config.quantization_config}")
+# print(f"Model loaded successfully with quantization_config={model.config.quantization_config}")
 
 tokenizer = AutoTokenizer.from_pretrained(model_name, use_cache=False)
 
