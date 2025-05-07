@@ -317,13 +317,13 @@ def cosine_ingredients_reward_func(guess_ingredients_list, answer_ingredients_em
     # If they're not vectorized yet, you'll need to adjust this code
     
     # Create a same vectorizer as the answer ingredients embeddings
-    vectorizer = "all-MiniLM-L6-v2"
+    vectorizer = SentenceTransformer("all-MiniLM-L6-v2")
     
     try:
-        guess_embeddings = vectorizer.fit_transform(guess_ingredients_list)
+        guess_embeddings = vectorizer.encode(guess_ingredients_list)
         
         # Calculate similarity matrix
-        similarity_matrix = cosine_similarity(guess_embeddings, answer_embeddings)
+        similarity_matrix = cosine_similarity(guess_embeddings, answer_ingredients_embeddings)
         
         # For each guess ingredient, find its max similarity with any answer ingredient
         max_similarities = np.max(similarity_matrix, axis=1)
@@ -337,6 +337,32 @@ def cosine_ingredients_reward_func(guess_ingredients_list, answer_ingredients_em
         return 0.0  # Return 0 on error
 
 def cosine_steps_reward_func(guess_steps_list, answer_steps_embeddings):
+    """Calculate cosine similarity between guess steps and answer steps.
+    
+    Args:
+        guess_steps_list: List of extracted steps from model output
+        answer_steps_embeddings: List of embeddings for ground truth steps
+        
+    Returns:
+        float: Average max cosine similarity score between 0 and 1
+    """
+
+    vectorizer = SentenceTransformer("all-MiniLM-L6-v2")
+
+    if not guess_steps_list or not answer_steps_embeddings:
+        return 0.0
+    
+    try:
+        guess_embeddings = vectorizer.encode(guess_steps_list)
+        similarity_matrix = cosine_similarity(guess_embeddings, answer_steps_embeddings)
+        max_similarities = np.max(similarity_matrix, axis=1)
+        avg_similarity = np.mean(max_similarities)
+        return float(avg_similarity)
+    except Exception as e:
+        print(f"Error in cosine similarity calculation: {e}")
+        return 0.0
+
+
 
     
 
@@ -363,6 +389,17 @@ def cosine_steps_reward_func(guess_steps_list, answer_steps_embeddings):
 #         f.write(f"Correctness reward: {reward}\n\n")
 #     return reward
 def correctness_reward_func(prompts, completions, answer, **kwargs) -> list[float]:
+    """Compute composite reward for recipe generation using multiple components.
+    
+    Args:
+        prompts: The prompts given to the model
+        completions: The model outputs to evaluate
+        answer: The ground truth answers with metadata
+        
+    Returns:
+        list[float]: Reward scores between 0.0 and 2.0 for each completion
+    """
+    # Extract the raw text responses
     responses = [completion[0]["content"] for completion in completions]
     q = prompts[0][-1]["content"]
 
@@ -388,10 +425,22 @@ def correctness_reward_func(prompts, completions, answer, **kwargs) -> list[floa
             f.write("Failed to extract valid recipe from response\n")
             
         f.write(f"Raw Response:\n{responses[0]}\n")
-    reward = [
-        2.0 if r == extract_xml_answer(a["content"][0]["text"]) else 0.0
-        for r, a in zip(extracted_responses, answer)
-    ]
+    reward = []
+
+    for r, a in zip(extracted_responses, answer):
+        if r is None or a is None:
+            reward.append(0.0)
+        else:
+            # extract ingredients and steps from the answer and response
+            answer_ingredients_embeddings = a['metadata']['ingredients_embeddings']
+            answer_steps_embeddings = a['metadata']['instructions_embeddings']
+            response_ingredients_list = r['ingredients']
+            response_steps_list = r['steps']
+            
+            # calculate rewards
+            ingredient_reward = cosine_ingredients_reward_func(response_ingredients_list, answer_ingredients_embeddings)
+            step_reward = cosine_steps_reward_func(response_steps_list, answer_steps_embeddings)
+            reward.append(ingredient_reward + step_reward)
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(f"Correctness reward: {reward}\n\n")
     return reward
