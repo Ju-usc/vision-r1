@@ -74,7 +74,7 @@ model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
     model_name,
     # torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32,  # Use float32 for CPU
     device_map="auto" if device == "cuda" else None,  # Don't use device_map for CPU
-    # use_flash_attention_2=True,
+    use_flash_attention_2=True,
     use_cache=False,
     quantization_config=bnb_cfg,
 )
@@ -800,21 +800,69 @@ def quick_sanity():
 
 quick_sanity()
 
+
+if torch.cuda.is_available():  # Only compile on GPU
+    try:
+        model = torch.compile(model)
+        print("🚀 Model compiled successfully!")
+    except Exception as e:
+        print(f"⚠️ Model compilation failed: {e}")
+
+def colab_gpu_check():
+    import torch
+    if torch.cuda.is_available():
+        print(f"✅ GPU detected: {torch.cuda.get_device_name(0)}")
+        print(f"✅ CUDA version: {torch.version.cuda}")
+        print(f"✅ Total GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
+        # Test if CUDA operations work
+        a = torch.tensor([1.0, 2.0], device='cuda')
+        b = torch.tensor([3.0, 4.0], device='cuda')
+        print(f"✅ CUDA operations work: {a + b}")
+        return True
+    else:
+        print("❌ No GPU detected! This will be extremely slow.")
+        return False
+
+# After dataset loading
+print(f"✅ Train dataset: {len(train_dataset)} examples")
+print(f"✅ Eval dataset: {len(eval_dataset)} examples")
+print(f"✅ Test dataset: {len(test_dataset)} examples")
+
+# Verify one example loads correctly
+sample = train_dataset[0]
+try:
+    # Get a quick visual check of an image 
+    if not isinstance(sample['prompt'][1]['content'][0]['image'], Image.Image):
+        # Convert bytes to PIL if needed
+        from PIL import Image
+        from io import BytesIO
+        img = Image.open(BytesIO(sample['prompt'][1]['content'][0]['image']))
+    else:
+        img = sample['prompt'][1]['content'][0]['image']
+    print(f"✅ Image dimensions: {img.size}")
+    display(img)  # This will show in Colab
+    print("✅ Example looks good!")
+except Exception as e:
+    print(f"❌ Error checking example: {e}")
+
+# Run at the top of your notebook
+gpu_available = colab_gpu_check()
+
 training_args = GRPOConfig(
     output_dir=output_dir,
     run_name=run_name,
-    learning_rate=1e-5,
+    learning_rate=3e-4, # high learning rate for small dataset
     adam_beta1=0.9,
     adam_beta2=0.99,
     beta=0.12,
-    weight_decay=0.1,
-    lr_scheduler_type="constant",
-    warmup_ratio=0.05,
+    weight_decay=0.05, # high weight decay for small dataset to improve generalization
+    lr_scheduler_type="cosine", # small dataset for fine-tuning as it want to make large initial progress and then refine gently
+    warmup_ratio=0.1, #longer warmup to stabilize training as 
     logging_steps=1,
     bf16=True if device == "cuda" else False,  # Only use bf16 on CUDA
     fp16=False,  # Don't use fp16 on CPU
     per_device_train_batch_size=1,
-    gradient_accumulation_steps=2,
+    gradient_accumulation_steps=16,
     num_generations=2 if device == "cuda" else 2,  # Reduce for CPU
     max_prompt_length=None,
     max_completion_length=500,
