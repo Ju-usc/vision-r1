@@ -823,3 +823,10 @@ for name, params in model.named_parameters():
     if not params.requires_grad:
         print(name)
 trainer.train()
+
+model_path = os.path.join(output_dir, "final_model")
+trainer.save_model(model_path)
+tokenizer.save_pretrained(model_path)
+processor.save_pretrained(model_path)
+print(f"Model saved to {model_path}")
+
