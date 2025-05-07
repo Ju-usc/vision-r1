@@ -10,3 +10,6 @@ vr1/
 *.txt
 *.jsonl
 myenv/
+__pycache__/
+*.py[cod]
+*$py.class
