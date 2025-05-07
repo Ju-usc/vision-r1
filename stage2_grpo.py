@@ -86,8 +86,12 @@ tokenizer = AutoTokenizer.from_pretrained(model_name, use_cache=False)
 # Enable gradient checkpointing to save memory
 model.gradient_checkpointing_enable()
 
-# Set temperature for generation
-model.generation_config.temperature = 0.8  # Lower temperature for more focused outputs
+# Set key generation parameters
+model.generation_config.temperature = 1.5  # Higher temperature for more randomness/creativity
+model.generation_config.do_sample = True  # Enable sampling
+model.generation_config.min_length = 30  # Modest minimum length to ensure something is generated
+model.generation_config.top_p = 0.95  # High top_p to ensure diverse outputs
+print(f"Generation config: {model.generation_config}")
 
 tokenizer.padding_size = "left"
 processor.tokenizer.padding_side = "left"
