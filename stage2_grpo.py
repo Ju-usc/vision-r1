@@ -912,7 +912,6 @@ class MemoryMonitorCallback(TrainerCallback):
             if state.global_step % 10 == 0:
                 print(f"💾 Memory usage: {allocated/1e9:.2f}GB ({mem_percent:.1%})")
 
-generation_config.temperature = 0.8  # Lower temperature for more focused outputs
 
 trainer = VLGRPOTrainer(
     model=model,
