@@ -20,7 +20,7 @@ from trl.models.utils import unwrap_model_for_generation
 from typing import Any
 from io import BytesIO
 from PIL import Image
-from transformers import BitsAndBytesConfig
+# from transformers import BitsAndBytesConfig
 import gc
 from load_helper import get_dev_stage_datasets
 
@@ -63,12 +63,12 @@ print(f"Using device: {device}")
 
 
 # ── 4-bit quantisation setup ───────────────────────────────────────────
-bnb_cfg = BitsAndBytesConfig(
-    load_in_4bit=True,              # turn on 4-bit weight loading
-    bnb_4bit_quant_type="nf4",      # Normal-Float-4 (best accuracy)
-    bnb_4bit_use_double_quant=True, # second quant pass: a bit slower, less memory
-    bnb_4bit_compute_dtype=torch.bfloat16  # matmul in bf16 on modern GPUs
-)
+# bnb_cfg = BitsAndBytesConfig(
+#     load_in_4bit=True,              # turn on 4-bit weight loading
+#     bnb_4bit_quant_type="nf4",      # Normal-Float-4 (best accuracy)
+#     bnb_4bit_use_double_quant=True, # second quant pass: a bit slower, less memory
+#     bnb_4bit_compute_dtype=torch.bfloat16  # matmul in bf16 on modern GPUs
+# )
 
 model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
     model_name,
