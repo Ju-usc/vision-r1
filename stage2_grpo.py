@@ -79,6 +79,9 @@ model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
     quantization_config=bnb_cfg,
 )
 
+# verification print
+print(f"Model loaded successfully with quantization_config={model.config.quantization_config}")
+
 tokenizer = AutoTokenizer.from_pretrained(model_name, use_cache=False)
 
 # ── ③ recast the layers you intend to fine-tune back to bf16 ──────────
