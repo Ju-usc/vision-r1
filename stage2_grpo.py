@@ -12,6 +12,8 @@ from transformers import (
     Qwen2_5_VLProcessor,
     AutoProcessor,
 )
+from sentence_transformers import SentenceTransformer
+import xml.etree.ElementTree as ET
 from qwen_vl_utils import process_vision_info
 from trl import GRPOConfig, GRPOTrainer
 from trl.models.utils import unwrap_model_for_generation
@@ -92,7 +94,7 @@ for name, param in model.visual.named_parameters():
 #     answer = text.split("<answer>")[-1]
 #     answer = answer.split("</answer>")[0]
 #     return answer.strip()
-def extract_xml_recipe(text: str) -> dict:
+def extract_xml_recipe(response_text: str) -> dict:
     """
     Parse a recipe XML string based on the defined structure in the prompt.
     
@@ -112,44 +114,57 @@ def extract_xml_recipe(text: str) -> dict:
     </recipe>
     """
     try:
-        # Extract the XML part if there's text before or after it
-        xml_match = re.search(r'<recipe>.*?</recipe>', text, re.DOTALL)
-        if not xml_match:
-            # If we can't find a proper recipe tag, return None
-            print(f"No <recipe> tag found in text during extract_xml_recipe")
+        # Make sure <recipe> tag exists
+        if "<recipe>" not in response_text or "</recipe>" not in response_text:
+            print("No <recipe> tag found in text during extract_xml_recipe")
             return None
-        xml_string = xml_match.group(0)
+            
+        # Extract just the recipe XML portion
+        recipe_start = response_text.find("<recipe>")
+        recipe_end = response_text.find("</recipe>") + len("</recipe>")
+        if recipe_start == -1 or recipe_end == -1:
+            return None
+            
+        xml_text = response_text[recipe_start:recipe_end]
         
-        # Try to parse the XML
-        root = ET.fromstring(xml_string)
-        
-        # Extract the title
-        title = root.find('title').text if root.find('title') is not None else "Unknown"
-        
-        ingredients = []
-        ingredients_section = root.find('ingredients')
-        if ingredients_section is not None:
-            for ing_elem in ingredients_section.findall('ingredient'):
-                if ing_elem.text:
-                    ingredients.append(ing_elem.text.strip())
-        
-        # Extract instruction steps
-        steps = []
-        instructions_section = root.find('instructions')
-        if instructions_section is not None:
-            for step_elem in instructions_section.findall('step'):
-                if step_elem.text:
-                    steps.append(step_elem.text.strip())
-        
-        # Return structured data in the format matching our dataset
-        return {
-            'title': title,
-            'ingredients': ingredients,
-            'steps': steps
+        # Parse XML
+        try:
+            root = ET.fromstring(xml_text)
+        except Exception as e:
+            print(f"Error parsing XML: {str(e)}")
+            print(f"Problematic XML: {xml_text}")
+            return None
+            
+        # Extract recipe components
+        recipe = {
+            "title": "",
+            "ingredients": [],
+            "steps": []
         }
+        
+        # Get title
+        title_elem = root.find("title")
+        if title_elem is not None and title_elem.text:
+            recipe["title"] = title_elem.text.strip()
+            
+        # Get ingredients
+        ingredients = root.find("ingredients")
+        if ingredients is not None:
+            for ingredient in ingredients.findall("ingredient"):
+                if ingredient.text:
+                    recipe["ingredients"].append(ingredient.text.strip())
+                    
+        # Get instructions/steps
+        instructions = root.find("instructions")
+        if instructions is not None:
+            for step in instructions.findall("step"):
+                if step.text:
+                    recipe["steps"].append(step.text.strip())
+                    
+        return recipe
+        
     except Exception as e:
-        print(f"Error parsing XML: {e}")
-        print(f"Problematic XML: {xml_string}")
+        print(f"Unexpected error in extract_xml_recipe: {str(e)}")
         return None
 
 # def format_data(sample):
@@ -233,7 +248,7 @@ train_dataset, eval_dataset, test_dataset = get_count_data()
 #     pattern = r"^<think>([\s\S]*?)</think>\n<answer>([\s\S]*?)</answer>$"
 #     return re.fullmatch(pattern, text) is not None
 
-def detect_format(text: str) -> bool:
+def detect_format(completion: str) -> bool:
     """
     Strictly validate that the model’s text is in the form
 
@@ -415,14 +430,12 @@ def correctness_reward_func(prompts, completions, answer, **kwargs) -> list[floa
 
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write("-" * 20 + "\n")
-        f.write(f"Question:\n{q[1]['text']}\n")
-        f.write(f"Answer (title):\n{(answer[0]['metadata']['title'])}\n")
+        f.write(f"Question:\n{q}\n")
         f.write(f"Answer (ingredients):\n{(answer[0]['metadata']['ingredients'])}\n")
         f.write(f"Answer (instructions):\n{(answer[0]['metadata']['instructions'])}\n")
         
         # Handle case where extraction might have failed
         if extracted_responses[0] is not None:
-            f.write(f"Extracted Response (title):\n{extracted_responses[0]['title']}\n")
             f.write(f"Extracted Response (ingredients):\n{extracted_responses[0]['ingredients']}\n")
             f.write(f"Extracted Response (steps):\n{extracted_responses[0]['steps']}\n")
         else:
@@ -444,6 +457,8 @@ def correctness_reward_func(prompts, completions, answer, **kwargs) -> list[floa
             # calculate rewards
             ingredient_reward = cosine_ingredients_reward_func(response_ingredients_list, answer_ingredients_embeddings)
             step_reward = cosine_steps_reward_func(response_steps_list, answer_steps_embeddings)
+            print(f"Ingredient reward: {ingredient_reward}")
+            print(f"Step reward: {step_reward}")
             reward.append(ingredient_reward + step_reward)
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(f"Correctness reward: {reward}\n\n")
