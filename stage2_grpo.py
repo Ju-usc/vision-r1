@@ -840,7 +840,7 @@ training_args = GRPOConfig(
     beta=0.12,
     weight_decay=0.05, # high weight decay for small dataset to improve generalization
     lr_scheduler_type="cosine", # small dataset for fine-tuning as it want to make large initial progress and then refine gently
-    warmup_ratio=0.1, #longer warmup to stabilize training as 
+    warmup_ratio=0.1, # longer warmup to stabilize training
     logging_steps=1,
     bf16=True if device == "cuda" else False,  # Only use bf16 on CUDA
     fp16=False,  # Don't use fp16 on CPU
@@ -851,6 +851,8 @@ training_args = GRPOConfig(
     max_completion_length=500,
     num_train_epochs=2,
     save_steps=10,
+    evaluation_strategy="steps", # Required when using load_best_model_at_end
+    eval_steps=10, # Match with save_steps
     save_total_limit=2,
     load_best_model_at_end=True,
     max_grad_norm=0.1,
