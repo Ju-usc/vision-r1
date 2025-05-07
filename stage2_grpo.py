@@ -23,9 +23,7 @@ from PIL import Image
 
 from load_helper import get_dev_stage_datasets
 
-SYSTEM_PROMPT = """Look at this food image and create a recipe in XML format:
-
-Example format:
+SYSTEM_PROMPT = """Look at the food image and create a recipe in following XML format:
 
 <think>think step by step to infer the recipe from the image</think>
 <recipe>
@@ -42,7 +40,7 @@ Example format:
 
 Format requirements:
 - Follow the exact XML structure shown above
-- List each ingredient in a separate <ingredient> tag with quantity when possible
+- List each ingredient in a separate <ingredient> tag with quantity
 - Present each cooking step in a separate <step> tag
 - Use clear, concise language throughout
 - Do not generate any text outside of the <recipe> tags and <think> tags
@@ -66,10 +64,13 @@ model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
     model_name,
     torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32,  # Use float32 for CPU
     device_map="auto" if device == "cuda" else None,  # Don't use device_map for CPU
-    # Removed flash_attention_2 requirement since it's not installed
+    # use_flash_attention_2=True,
     use_cache=False,
 )
 tokenizer = AutoTokenizer.from_pretrained(model_name, use_cache=False)
+
+model.gradient_checkpointing_enable() # Enable gradient checkpointing to save memory
+
 tokenizer.padding_size = "left"
 processor.tokenizer.padding_side = "left"
 
@@ -798,8 +799,8 @@ training_args = GRPOConfig(
     bf16=True if device == "cuda" else False,  # Only use bf16 on CUDA
     fp16=False,  # Don't use fp16 on CPU
     per_device_train_batch_size=1,
-    gradient_accumulation_steps=4,
-    num_generations=4 if device == "cuda" else 2,  # Reduce for CPU
+    gradient_accumulation_steps=2,
+    num_generations=2 if device == "cuda" else 2,  # Reduce for CPU
     max_prompt_length=None,
     max_completion_length=500,
     num_train_epochs=2,
