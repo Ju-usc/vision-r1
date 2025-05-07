@@ -68,7 +68,7 @@ processor = AutoProcessor.from_pretrained(
     model_name, max_pixels=max_pixels, use_cache=False
 )
 # Check if CUDA is available, otherwise use CPU
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device = "cuda" if torch.cuda.is_available() else "cuda"
 print(f"Using device: {device}")
 
 
@@ -553,7 +553,7 @@ def collate_fn(examples):
         ]
         examples[idx]["prompt"] = new_prompt
     texts = [
-        processor.apply_chat_template(example["prompt"], tokenize=False)
+        processor.apply_chat_template(example["prompt"], tokenize=False, add_generation_prompt=True)
         for example in examples
     ]
     image_inputs = []
@@ -807,12 +807,6 @@ def quick_sanity():
 quick_sanity()
 
 
-if torch.cuda.is_available():  # Only compile on GPU
-    try:
-        model = torch.compile(model)
-        print("🚀 Model compiled successfully!")
-    except Exception as e:
-        print(f"⚠️ Model compilation failed: {e}")
 
 def colab_gpu_check():
     import torch
@@ -862,7 +856,7 @@ gpu_available = colab_gpu_check()
 training_args = GRPOConfig(
     output_dir=output_dir,
     run_name=run_name,
-    learning_rate=1e-4, # high learning rate for small dataset
+    learning_rate=1e-5, # high learning rate for small dataset
     adam_beta1=0.9,
     adam_beta2=0.99,
     beta=0.12,
