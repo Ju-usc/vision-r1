@@ -35,20 +35,25 @@ SYSTEM_PROMPT = """Look at the food image and create a recipe in following XML f
 <recipe>
   <title>Name of the dish</title>
   <ingredients>
-    <ingredient>Quantity and ingredient (e.g., 2 tbsp olive oil)</ingredient>
-    <!-- Add more ingredients as needed -->
+    <ingredient>Quantity and ingredient </ingredient>
+    <ingredient>Another ingredient with quantity</ingredient>
+    <ingredient>A third ingredient with quantity</ingredient>
   </ingredients>
   <instructions>
-    <step>1. Preheat the oven to 350°F.</step>
-    <!-- Add more steps as needed -->
+    <step>1. First instruction step with clear details</step>
+    <step>2. Second instruction step</step>
+    <step>3. Third instruction step</step>
   </instructions>
 </recipe>
+
+
 
 Format requirements:
 - Follow the exact XML structure shown above
 - List each ingredient in a separate <ingredient> tag with quantity
 - Present each cooking step in a separate <step> tag
 - Use clear, concise language throughout
+- Make sure to include both opening and closing tags for each element
 - Do not generate any text outside of the <recipe> tags and <think> tags
 """
 
@@ -850,7 +855,7 @@ gpu_available = colab_gpu_check()
 training_args = GRPOConfig(
     output_dir=output_dir,
     run_name=run_name,
-    learning_rate=3e-4, # high learning rate for small dataset
+    learning_rate=1e-4, # high learning rate for small dataset
     adam_beta1=0.9,
     adam_beta2=0.99,
     beta=0.12,
@@ -904,6 +909,7 @@ class MemoryMonitorCallback(TrainerCallback):
             if state.global_step % 10 == 0:
                 print(f"💾 Memory usage: {allocated/1e9:.2f}GB ({mem_percent:.1%})")
 
+generation_config.temperature = 0.8  # Lower temperature for more focused outputs
 
 trainer = VLGRPOTrainer(
     model=model,
