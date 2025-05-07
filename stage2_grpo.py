@@ -20,6 +20,7 @@ from trl.models.utils import unwrap_model_for_generation
 from typing import Any
 from io import BytesIO
 from PIL import Image
+from transformers import BitsAndBytesConfig
 
 from load_helper import get_dev_stage_datasets
 
@@ -60,15 +61,31 @@ processor = AutoProcessor.from_pretrained(
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
 
+
+# ── 4-bit quantisation setup ───────────────────────────────────────────
+bnb_cfg = BitsAndBytesConfig(
+    load_in_4bit=True,              # turn on 4-bit weight loading
+    bnb_4bit_quant_type="nf4",      # Normal-Float-4 (best accuracy)
+    bnb_4bit_use_double_quant=True, # second quant pass: a bit slower, less memory
+    bnb_4bit_compute_dtype=torch.bfloat16  # matmul in bf16 on modern GPUs
+)
+
 model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
     model_name,
-    torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32,  # Use float32 for CPU
+    # torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32,  # Use float32 for CPU
     device_map="auto" if device == "cuda" else None,  # Don't use device_map for CPU
     # use_flash_attention_2=True,
     use_cache=False,
+    quantization_config=bnb_cfg,
 )
+
 tokenizer = AutoTokenizer.from_pretrained(model_name, use_cache=False)
 
+# ── ③ recast the layers you intend to fine-tune back to bf16 ──────────
+model.lm_head.to(torch.bfloat16)                 # lm_head weights
+for n, p in model.visual.named_parameters():     # tiny MLP head in vision branch
+    if "merger.mlp.2" in n:
+        p.data = p.data.to(torch.bfloat16)
 model.gradient_checkpointing_enable() # Enable gradient checkpointing to save memory
 
 tokenizer.padding_size = "left"
@@ -81,9 +98,13 @@ for param in model.parameters():
 for param in model.lm_head.parameters():
     param.requires_grad = True
 
-for layer in model.model.layers[:5]:
-    for param in layer.parameters():
-        param.requires_grad = True
+# for layer in model.model.layers[:5]:
+#     for param in layer.parameters():
+#         param.requires_grad = True
+for i, layer in enumerate(model.model.layers[:5]):
+    layer.to(torch.bfloat16)            
+    for p in layer.parameters():
+        p.requires_grad = True
 
 for name, param in model.visual.named_parameters():
     if "merger.mlp.2" in name:
@@ -759,6 +780,25 @@ class VLGRPOTrainer(GRPOTrainer):
 
         return loss
 
+
+def quick_sanity():
+    # 1. Print dtype and grad status of key modules
+    print("lm_head :", model.lm_head.weight.dtype, model.lm_head.weight.requires_grad)
+    print("layer0  :", model.model.layers[0].self_attn.q_proj.weight.dtype,
+                       model.model.layers[0].self_attn.q_proj.weight.requires_grad)
+    print("layer10 :", model.model.layers[10].self_attn.q_proj.weight.dtype,
+                       model.model.layers[10].self_attn.q_proj.weight.requires_grad)
+    print("vision merger.mlp.2 :", next(p for n,p in model.visual.named_parameters()
+                                        if 'merger.mlp.2' in n).dtype)
+
+    # 2. One dummy forward to make sure it fits in VRAM
+    with torch.no_grad():
+        dummy_ids = tokenizer("test", return_tensors="pt").input_ids.to(device)
+        out = model(input_ids=dummy_ids, attention_mask=torch.ones_like(dummy_ids))
+    if torch.cuda.is_available():
+        print(torch.cuda.memory_summary(device=None, abbreviated=True))
+
+quick_sanity()
 
 training_args = GRPOConfig(
     output_dir=output_dir,
