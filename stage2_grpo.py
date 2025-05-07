@@ -86,6 +86,9 @@ tokenizer = AutoTokenizer.from_pretrained(model_name, use_cache=False)
 # Enable gradient checkpointing to save memory
 model.gradient_checkpointing_enable()
 
+# Set temperature for generation
+model.generation_config.temperature = 0.8  # Lower temperature for more focused outputs
+
 tokenizer.padding_size = "left"
 processor.tokenizer.padding_side = "left"
 sb_model = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")   # stays on CPU
