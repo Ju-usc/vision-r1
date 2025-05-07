@@ -11,6 +11,7 @@ from transformers import (
     Qwen2_5_VLForConditionalGeneration,
     Qwen2_5_VLProcessor,
     AutoProcessor,
+    TrainerCallback,
 )
 from sentence_transformers import SentenceTransformer
 import xml.etree.ElementTree as ET
@@ -823,7 +824,12 @@ try:
     else:
         img = sample['prompt'][1]['content'][0]['image']
     print(f"✅ Image dimensions: {img.size}")
-    display(img)  # This will show in Colab
+    # Try to use display if available, otherwise just print info
+    try:
+        from IPython.display import display
+        display(img)  # This will show in Colab
+    except ImportError:
+        print(f"Image info: {img.format}, {img.mode}, {img.size}")
     print("✅ Example looks good!")
 except Exception as e:
     print(f"❌ Error checking example: {e}")
@@ -868,7 +874,7 @@ def memory_cleanup():
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
         print(f"🧹 Memory cleaned. Current GPU usage: {torch.cuda.memory_allocated()/1e9:.2f} GB")
-class MemoryMonitorCallback(transformers.TrainerCallback):
+class MemoryMonitorCallback(TrainerCallback):
     """Monitor GPU memory and pause if approaching limits"""
     def __init__(self, warning_threshold=0.95):
         self.warning_threshold = warning_threshold
