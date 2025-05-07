@@ -72,7 +72,7 @@ print(f"Using device: {device}")
 
 model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
     model_name,
-    # torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32,  # Use float32 for CPU
+    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,  # Use fp16 which is better supported
     device_map="auto" if device == "cuda" else None,  # Don't use device_map for CPU
     use_flash_attention_2=True,
     use_cache=False,
