@@ -72,13 +72,8 @@ model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
 
 tokenizer = AutoTokenizer.from_pretrained(model_name, use_cache=False)
 
-# ── ③ ensure all layers use the same dtype for consistency ──────────
-model_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-model.lm_head.to(model_dtype)                 # lm_head weights
-for n, p in model.visual.named_parameters():     # tiny MLP head in vision branch
-    if "merger.mlp.2" in n:
-        p.data = p.data.to(model_dtype)
-model.gradient_checkpointing_enable() # Enable gradient checkpointing to save memory
+# Enable gradient checkpointing to save memory
+model.gradient_checkpointing_enable()
 
 tokenizer.padding_size = "left"
 processor.tokenizer.padding_side = "left"
