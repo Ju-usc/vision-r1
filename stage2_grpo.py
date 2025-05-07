@@ -4,7 +4,12 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 import torch
+
+# Enable TensorFloat32 for improved performance on A100 GPUs
+torch.set_float32_matmul_precision('high')
+
 import patch_qwen  # noqa: F401
+
 from datasets import load_dataset, Dataset
 from transformers import (
     AutoTokenizer,
@@ -449,6 +454,11 @@ def correctness_reward_func(prompts, completions, answer, **kwargs) -> list[floa
 def strict_format_reward_func(completions, **kwargs) -> list[float]:
     """Reward function that checks if the completion has a specific format."""
     responses = [completion[0]["content"] for completion in completions]
+    
+    # Print a sample of what the model is generating
+    if responses:
+        print(f"\n==== MODEL OUTPUT SAMPLE ====\n{responses[0][:200]}...\n==== END SAMPLE ====\n")
+    
     matches = [detect_format(r) for r in responses]
     reward = [1 if match else 0.0 for match in matches]
     print(f"Strict format reward: {reward}")
