@@ -93,7 +93,6 @@ for param in model.lm_head.parameters():
 for layer in model.model.layers[:5]:
     for param in layer.parameters():
         param.requires_grad = True
-# Removed explicit data type conversion that was causing conflicts
 
 for name, param in model.visual.named_parameters():
     if "merger.mlp.2" in name:
