@@ -21,7 +21,7 @@ from typing import Any
 from io import BytesIO
 from PIL import Image
 from transformers import BitsAndBytesConfig
-
+import gc
 from load_helper import get_dev_stage_datasets
 
 SYSTEM_PROMPT = """Look at the food image and create a recipe in following XML format:
@@ -867,12 +867,42 @@ training_args = GRPOConfig(
     max_prompt_length=None,
     max_completion_length=500,
     num_train_epochs=2,
-    save_steps=50,
+    save_steps=10,
+    save_total_limit=2,
+    load_best_model_at_end=True,
     max_grad_norm=0.1,
     log_on_each_node=False,
     use_vllm=False,
     report_to="mlflow",
 )
+
+# In order to prevent GPU memory overflow during training
+def memory_cleanup():
+    """Force garbage collection and CUDA cache clearing"""
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        print(f"🧹 Memory cleaned. Current GPU usage: {torch.cuda.memory_allocated()/1e9:.2f} GB")
+class MemoryMonitorCallback(transformers.TrainerCallback):
+    """Monitor GPU memory and pause if approaching limits"""
+    def __init__(self, warning_threshold=0.95):
+        self.warning_threshold = warning_threshold
+        
+    def on_step_end(self, args, state, control, **kwargs):
+        if torch.cuda.is_available():
+            # Get current memory usage
+            allocated = torch.cuda.memory_allocated()
+            max_mem = torch.cuda.get_device_properties(0).total_memory
+            mem_percent = allocated / max_mem
+            
+            # If reaching threshold, force cleanup
+            if mem_percent > self.warning_threshold:
+                print(f"⚠️ High memory usage detected: {mem_percent:.1%}")
+                memory_cleanup()
+                
+            # Every 10 steps, report memory
+            if state.global_step % 10 == 0:
+                print(f"💾 Memory usage: {allocated/1e9:.2f}GB ({mem_percent:.1%})")
 
 
 trainer = VLGRPOTrainer(
@@ -881,10 +911,12 @@ trainer = VLGRPOTrainer(
     reward_funcs=[strict_format_reward_func, correctness_reward_func],
     args=training_args,
     train_dataset=train_dataset,
+    callbacks=[MemoryMonitorCallback()]
 )
 for name, params in model.named_parameters():
     if not params.requires_grad:
         print(name)
+        
 trainer.train()
 
 model_path = os.path.join(output_dir, "final_model")
