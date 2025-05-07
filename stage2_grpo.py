@@ -1,6 +1,7 @@
 import re
 import os
-
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 import torch
 import patch_qwen  # noqa: F401
@@ -43,10 +44,12 @@ Format requirements:
 - Do not generate any text outside of the <recipe> tags and <think> tags
 """
 
-model_name = "/home/jackson/vision-r1/outputs/Qwen-0.5B-GRPO-Count-SFT/checkpoint-1500"
+# model_name = "/home/jackson/vision-r1/outputs/Qwen-0.5B-GRPO-Count-SFT/checkpoint-1500"
+model_name = "Qwen/Qwen2.5-VL-3B-Instruct"
+
 LOG_FILE = "response_log.txt"
-output_dir = "outputs/Qwen-0.5B-GRPO-Count-R1"
-run_name = "Qwen-0.5B-GRPO-Count-R1"
+output_dir = "outputs/Qwen-3B-GRPO-Count-R1"
+run_name = "Qwen-3B-GRPO-Count-R1"
 max_pixels = 256 * 256
 processor = AutoProcessor.from_pretrained(
     model_name, max_pixels=max_pixels, use_cache=False
@@ -83,7 +86,65 @@ for name, param in model.visual.named_parameters():
 #     answer = text.split("<answer>")[-1]
 #     answer = answer.split("</answer>")[0]
 #     return answer.strip()
-
+def extract_xml_recipe(text: str) -> dict:
+    """
+    Parse a recipe XML string based on the defined structure in the prompt.
+    
+    The expected structure is:
+    <recipe>
+      <title>The dish name</title>
+      <ingredients>
+        <ingredient>1 cup whole milk</ingredient>
+        <ingredient>2 tbsp sugar</ingredient>
+        <!-- More ingredients -->
+      </ingredients>
+      <instructions>
+        <step>1. Preheat the oven to 350°F.</step>
+        <step>2. Mix all ingredients in a bowl.</step>
+        <!-- More steps -->
+      </instructions>
+    </recipe>
+    """
+    try:
+        # Extract the XML part if there's text before or after it
+        xml_match = re.search(r'<recipe>.*?</recipe>', text, re.DOTALL)
+        if not xml_match:
+            # If we can't find a proper recipe tag, return None
+            print(f"No <recipe> tag found in text during extract_xml_recipe")
+            return None
+        xml_string = xml_match.group(0)
+        
+        # Try to parse the XML
+        root = ET.fromstring(xml_string)
+        
+        # Extract the title
+        title = root.find('title').text if root.find('title') is not None else "Unknown"
+        
+        ingredients = []
+        ingredients_section = root.find('ingredients')
+        if ingredients_section is not None:
+            for ing_elem in ingredients_section.findall('ingredient'):
+                if ing_elem.text:
+                    ingredients.append(ing_elem.text.strip())
+        
+        # Extract instruction steps
+        steps = []
+        instructions_section = root.find('instructions')
+        if instructions_section is not None:
+            for step_elem in instructions_section.findall('step'):
+                if step_elem.text:
+                    steps.append(step_elem.text.strip())
+        
+        # Return structured data in the format matching our dataset
+        return {
+            'title': title,
+            'ingredients': ingredients,
+            'steps': steps
+        }
+    except Exception as e:
+        print(f"Error parsing XML: {e}")
+        print(f"Problematic XML: {xml_string}")
+        return None
 
 # def format_data(sample):
 #     return {
@@ -233,12 +294,78 @@ def detect_format(text: str) -> bool:
     pattern = re.compile(recipe_regex, re.DOTALL | re.IGNORECASE | re.VERBOSE)
     return pattern.search(text) is not None
 
+def cosine_ingredients_reward_func(guess_ingredients_list, answer_ingredients_embeddings) -> float:
+    """Calculate cosine similarity between guess ingredients and answer ingredients.
+    
+    Args:
+        guess_ingredients_list: List of extracted ingredients from model output
+        answer_ingredients_embeddings: List of embeddings for ground truth ingredients
+        
+    Returns:
+        float: Average max cosine similarity score between 0 and 1
+    """
+
+    
+    # If no ingredients were extracted, return 0
+    if not guess_ingredients_list or not answer_ingredients_embeddings:
+        return 0.0
+        
+    # If we need to generate embeddings for the guess ingredients
+    # This assumes answer_ingredients_embeddings are already vectorized
+    # If they're not vectorized yet, you'll need to adjust this code
+    
+    # Create a same vectorizer as the answer ingredients embeddings
+    vectorizer = "all-MiniLM-L6-v2"
+    
+    try:
+        guess_embeddings = vectorizer.fit_transform(guess_ingredients_list)
+        
+        # Calculate similarity matrix
+        similarity_matrix = cosine_similarity(guess_embeddings, answer_embeddings)
+        
+        # For each guess ingredient, find its max similarity with any answer ingredient
+        max_similarities = np.max(similarity_matrix, axis=1)
+        
+        # Average these max similarities
+        avg_similarity = np.mean(max_similarities)
+        
+        return float(avg_similarity)
+    except Exception as e:
+        print(f"Error in cosine similarity calculation: {e}")
+        return 0.0  # Return 0 on error
+
+def cosine_steps_reward_func(guess_steps_list, answer_steps_embeddings):
+
+    
 
 # Reward functions
+# def correctness_reward_func(prompts, completions, answer, **kwargs) -> list[float]:
+#     responses = [completion[0]["content"] for completion in completions]
+#     q = prompts[0][-1]["content"]
+#     extracted_responses = [extract_xml_answer(r) for r in responses]
+#     log_dir = os.path.dirname(LOG_FILE)
+#     if log_dir and not os.path.exists(log_dir):
+#         os.makedirs(log_dir)
+
+#     with open(LOG_FILE, "a", encoding="utf-8") as f:
+#         f.write("-" * 20 + "\n")
+#         f.write(f"Question:\n{q[1]['text']}\n")
+#         f.write(f"Answer:\n{extract_xml_answer(answer[0]['content'][0]['text'])}\n")
+#         f.write(f"Response:\n{responses[0]}\n")
+#         f.write(f"Extracted:\n{extracted_responses[0]}\n")
+#     reward = [
+#         2.0 if r == extract_xml_answer(a["content"][0]["text"]) else 0.0
+#         for r, a in zip(extracted_responses, answer)
+#     ]
+#     with open(LOG_FILE, "a", encoding="utf-8") as f:
+#         f.write(f"Correctness reward: {reward}\n\n")
+#     return reward
 def correctness_reward_func(prompts, completions, answer, **kwargs) -> list[float]:
     responses = [completion[0]["content"] for completion in completions]
     q = prompts[0][-1]["content"]
-    extracted_responses = [extract_xml_answer(r) for r in responses]
+
+    # Extract recipe from XML where each response has 3 parts: title, ingredients, instructions
+    extracted_responses = [extract_xml_recipe(r) for r in responses]
     log_dir = os.path.dirname(LOG_FILE)
     if log_dir and not os.path.exists(log_dir):
         os.makedirs(log_dir)
@@ -246,9 +373,19 @@ def correctness_reward_func(prompts, completions, answer, **kwargs) -> list[floa
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write("-" * 20 + "\n")
         f.write(f"Question:\n{q[1]['text']}\n")
-        f.write(f"Answer:\n{extract_xml_answer(answer[0]['content'][0]['text'])}\n")
-        f.write(f"Response:\n{responses[0]}\n")
-        f.write(f"Extracted:\n{extracted_responses[0]}\n")
+        f.write(f"Answer (title):\n{(answer[0]['metadata']['title'])}\n")
+        f.write(f"Answer (ingredients):\n{(answer[0]['metadata']['ingredients'])}\n")
+        f.write(f"Answer (instructions):\n{(answer[0]['metadata']['instructions'])}\n")
+        
+        # Handle case where extraction might have failed
+        if extracted_responses[0] is not None:
+            f.write(f"Extracted Response (title):\n{extracted_responses[0]['title']}\n")
+            f.write(f"Extracted Response (ingredients):\n{extracted_responses[0]['ingredients']}\n")
+            f.write(f"Extracted Response (steps):\n{extracted_responses[0]['steps']}\n")
+        else:
+            f.write("Failed to extract valid recipe from response\n")
+            
+        f.write(f"Raw Response:\n{responses[0]}\n")
     reward = [
         2.0 if r == extract_xml_answer(a["content"][0]["text"]) else 0.0
         for r, a in zip(extracted_responses, answer)
@@ -262,7 +399,7 @@ def strict_format_reward_func(completions, **kwargs) -> list[float]:
     """Reward function that checks if the completion has a specific format."""
     responses = [completion[0]["content"] for completion in completions]
     matches = [detect_format(r) for r in responses]
-    reward = [0.5 if match else 0.0 for match in matches]
+    reward = [1 if match else 0.0 for match in matches]
     print(f"Strict format reward: {reward}")
     return reward
 
