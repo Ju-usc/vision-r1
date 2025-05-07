@@ -73,7 +73,8 @@ model.gradient_checkpointing_enable() # Enable gradient checkpointing to save me
 
 tokenizer.padding_size = "left"
 processor.tokenizer.padding_side = "left"
-
+sb_model = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")   # stays on CPU
+sb_model.eval() # set to evaluation mode
 for param in model.parameters():
     param.requires_grad = False
 
@@ -316,75 +317,49 @@ def detect_format(completion: str) -> bool:
     pattern = re.compile(recipe_regex, re.DOTALL | re.IGNORECASE | re.VERBOSE)
     return pattern.search(text) is not None
 
-def cosine_ingredients_reward_func(guess_ingredients_list, answer_ingredients_embeddings) -> float:
-    """Calculate cosine similarity between guess ingredients and answer ingredients.
-    
-    Args:
-        guess_ingredients_list: List of extracted ingredients from model output
-        answer_ingredients_embeddings: List of embeddings for ground truth ingredients
-        
-    Returns:
-        float: Average max cosine similarity score between 0 and 1
+def cosine_ingredients_reward_func(guess_ingredients_list,
+                                   answer_ingredients_embeddings) -> float:
     """
-
-    
-    # If no ingredients were extracted, return 0
+    Cosine-sim reward for ingredients.
+    """
     if not guess_ingredients_list or not answer_ingredients_embeddings:
         return 0.0
-        
-    # If we need to generate embeddings for the guess ingredients
-    # This assumes answer_ingredients_embeddings are already vectorized
-    # If they're not vectorized yet, you'll need to adjust this code
-    
-    # Create a same vectorizer as the answer ingredients embeddings
-    vectorizer = SentenceTransformer("all-MiniLM-L6-v2")
-    
+
     try:
-        guess_embeddings = vectorizer.encode(guess_ingredients_list)
-        
-        # Calculate similarity matrix
-        similarity_matrix = cosine_similarity(guess_embeddings, answer_ingredients_embeddings)
-        
-        # For each guess ingredient, find its max similarity with any answer ingredient
-        max_similarities = np.max(similarity_matrix, axis=1)
-        
-        # Average these max similarities
-        avg_similarity = np.mean(max_similarities)
-        
+        # **reuse** the pre-loaded model instead of re-creating it
+        guess_embeddings = sb_model.encode(guess_ingredients_list,
+                                           device="cpu",
+                                           show_progress_bar=False)
+
+        similarity_matrix = cosine_similarity(guess_embeddings,
+                                              answer_ingredients_embeddings)
+        avg_similarity = np.mean(np.max(similarity_matrix, axis=1))
         return float(avg_similarity)
     except Exception as e:
-        print(f"Error in cosine similarity calculation: {e}")
-        return 0.0  # Return 0 on error
+        print(f"[ingredient-reward] Error: {e}")
+        return 0.0
 
-def cosine_steps_reward_func(guess_steps_list, answer_steps_embeddings):
-    """Calculate cosine similarity between guess steps and answer steps.
-    
-    Args:
-        guess_steps_list: List of extracted steps from model output
-        answer_steps_embeddings: List of embeddings for ground truth steps
-        
-    Returns:
-        float: Average max cosine similarity score between 0 and 1
+def cosine_steps_reward_func(guess_steps_list,
+                             answer_steps_embeddings) -> float:
     """
-
-    vectorizer = SentenceTransformer("all-MiniLM-L6-v2")
-
+    Cosine-sim reward for instruction steps.
+    """
     if not guess_steps_list or not answer_steps_embeddings:
         return 0.0
-    
+
     try:
-        guess_embeddings = vectorizer.encode(guess_steps_list)
-        similarity_matrix = cosine_similarity(guess_embeddings, answer_steps_embeddings)
-        max_similarities = np.max(similarity_matrix, axis=1)
-        avg_similarity = np.mean(max_similarities)
+        # same fix here
+        guess_embeddings = sb_model.encode(guess_steps_list,
+                                           device="cpu",
+                                           show_progress_bar=False)
+
+        similarity_matrix = cosine_similarity(guess_embeddings,
+                                              answer_steps_embeddings)
+        avg_similarity = np.mean(np.max(similarity_matrix, axis=1))
         return float(avg_similarity)
     except Exception as e:
-        print(f"Error in cosine similarity calculation: {e}")
-        return 0.0
-
-
-
-    
+        print(f"[step-reward] Error: {e}")
+        return 0.0    
 
 # Reward functions
 # def correctness_reward_func(prompts, completions, answer, **kwargs) -> list[float]:
