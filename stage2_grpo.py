@@ -870,7 +870,7 @@ training_args = GRPOConfig(
     gradient_accumulation_steps=4,
     num_generations=2 if device == "cuda" else 2,  # Reduce for CPU
     max_prompt_length=None,
-    max_completion_length=500,
+    max_completion_length=1000,
     num_train_epochs=2,
     save_steps=10,
     evaluation_strategy="no", # Skip evaluation during training
