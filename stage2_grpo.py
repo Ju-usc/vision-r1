@@ -20,7 +20,6 @@ from trl.models.utils import unwrap_model_for_generation
 from typing import Any
 from io import BytesIO
 from PIL import Image
-# from transformers import BitsAndBytesConfig
 import gc
 from load_helper import get_dev_stage_datasets
 
@@ -62,13 +61,6 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
 
 
-# ── 4-bit quantisation setup ───────────────────────────────────────────
-# bnb_cfg = BitsAndBytesConfig(
-#     load_in_4bit=True,              # turn on 4-bit weight loading
-#     bnb_4bit_quant_type="nf4",      # Normal-Float-4 (best accuracy)
-#     bnb_4bit_use_double_quant=True, # second quant pass: a bit slower, less memory
-#     bnb_4bit_compute_dtype=torch.bfloat16  # matmul in bf16 on modern GPUs
-# )
 
 model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
     model_name,
@@ -76,11 +68,7 @@ model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
     device_map="auto" if device == "cuda" else None,  # Don't use device_map for CPU
     use_flash_attention_2=False,  # Disable flash attention to avoid dtype issues
     use_cache=False,
-    # quantization_config=bnb_cfg,
 )
-
-# verification print
-# print(f"Model loaded successfully with quantization_config={model.config.quantization_config}")
 
 tokenizer = AutoTokenizer.from_pretrained(model_name, use_cache=False)
 
@@ -102,13 +90,10 @@ for param in model.parameters():
 for param in model.lm_head.parameters():
     param.requires_grad = True
 
-# for layer in model.model.layers[:5]:
-#     for param in layer.parameters():
-#         param.requires_grad = True
-for i, layer in enumerate(model.model.layers[:5]):
-    layer.to(torch.bfloat16)            
-    for p in layer.parameters():
-        p.requires_grad = True
+for layer in model.model.layers[:5]:
+    for param in layer.parameters():
+        param.requires_grad = True
+# Removed explicit data type conversion that was causing conflicts
 
 for name, param in model.visual.named_parameters():
     if "merger.mlp.2" in name:
