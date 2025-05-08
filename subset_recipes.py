@@ -47,7 +47,7 @@ def main(rec_path: Path, vec_path: Path, out_dir: Path, seed: int = 42):
     idxs = list(range(len(recs)))
     random.shuffle(idxs)
 
-    split_sizes = {"train": 80, "dev": 10, "test": 10}
+    split_sizes = {"train": 80, "dev": 20, "test": 20}
     cursor = 0
     for split, n in split_sizes.items():
         take = idxs[cursor : cursor + n]
