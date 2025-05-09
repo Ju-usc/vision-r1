@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 import os
 import xml.etree.ElementTree as ET
 import copy
+import xml.sax.saxutils as su
 
 # Load environment variables from .env file
 load_dotenv()
@@ -47,6 +48,15 @@ def parse_recipe_xml(xml_string):
     </recipe>
     """
     try:
+        # # 1) Extract <think> if present
+        # think_text = None
+        # think_match = re.search(r'<think>(.*?)</think>', xml_string, re.DOTALL)
+        # if think_match:
+        #     think_text = think_match.group(1).strip()
+
+
+        xml_string = xml_string.replace('&', 'and')
+            
         # Extract the XML part if there's text before or after it
         xml_match = re.search(r'<recipe>.*?</recipe>', xml_string, re.DOTALL)
         if xml_match:
@@ -74,11 +84,21 @@ def parse_recipe_xml(xml_string):
                     steps.append(step_elem.text.strip())
         
         # Return structured data in the format matching our dataset
-        return {
-            'title': title,
-            'ingredients': ingredients,
-            'steps': steps
-        }
+        if(xml_string.find("<think>") != -1):
+            print('think found')
+            return {
+                'title': title,
+                'ingredients': ingredients,
+                'steps': steps,
+                'think' : "include"
+            }
+        else:
+            return {
+                'title': title,
+                'ingredients': ingredients,
+                'steps': steps,
+                'think' : "None"
+            }
     except Exception as e:
         print(f"Error parsing XML: {e}")
         print(f"Problematic XML: {xml_string}")

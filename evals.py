@@ -11,15 +11,15 @@ import json
 from logging import config
 from pyexpat import model
 from PIL import Image
-from utils import parse_recipe_xml, convert_recipe_to_xml, preprocess_dataset
+from utils import parse_recipe_xml
 from google import genai
 from google.genai import types
 from pydantic import BaseModel
 from pathlib import Path
 import utils
-from stage2_grpo import get_count_data
+# from stage2_grpo import get_count_data
 
-
+nltk.download('punkt_tab')
 embedder = SentenceTransformer('all-MiniLM-L6-v2')
 
 def compute_top_cosine_similarity(pred_string, reference_strings, reference_embeddings):
@@ -169,18 +169,38 @@ def llm_eval_score(golden_xml: str, pred_xml: str, image_base64: str = None) -> 
     gt = parse_recipe_xml(golden_xml)
     pred = parse_recipe_xml(pred_xml)
 
-    # Build the system prompt: chef-style holistic evaluation, XML output
-    # SYSTEM MESSAGE PROMPT - FINE TUNE
-    system_message = (
+    # print(pred['think'])
+    flag = False
+    if(pred_xml.find("<think>") != -1 or pred_xml.find("</think>") != -1):
+        flag = True
+        # print("flag true")
+
+    system_message = ""
+    if flag:
+        system_message = (
         "You are a professional chef.\n"
         "Evaluate whether the predicted recipe would realistically produce the dish shown in the image, "
         "and how well it aligns with the ground-truth recipe. Consider ingredient correctness, cooking steps, "
-        "order, practicality, and visual appearance. "
-        #"There will also be a <thinking>...</thinking> section in the prediction XML input, so also comment on whether the model's \"thinking\" is valid.\n"
+        "order, practicality, and visual appearance. \n"
+        "There will also be a <think>...</think> section in the prediction XML input that shows the model's thought process, "
+        "so also comment on whether the model's \"thinking\" is logical and follows a valid line of reasoning.\n"
         "Determine a single feasibility_score of the predicted recipe between 0.0 (completely infeasible) and 1.0 (perfectly feasible) based on the aforementioned criteria,"
-        "and a comment describing strengths and potential issues, with insight into the chosen feasability score.\n"
+        "and write a comment describing strengths and potential issues, with insight into the chosen feasability score. The comment should be around 6-8 sentences, 8 maximum.\n"
         "Return a parseable JSON string/snippet with the entry: evaluation = { \"feasibility_score\": string, \"comment\": string }"
-    )
+        )
+    else:
+        # Build the system prompt: chef-style holistic evaluation, XML output
+        # SYSTEM MESSAGE PROMPT - FINE TUNE
+        system_message = (
+            "You are a professional chef.\n"
+            "Evaluate whether the predicted recipe would realistically produce the dish shown in the image, "
+            "and how well it aligns with the ground-truth recipe. Consider ingredient correctness, cooking steps, "
+            "order, practicality, and visual appearance. "
+            #"There will also be a <thinking>...</thinking> section in the prediction XML input, so also comment on whether the model's \"thinking\" is valid.\n"
+            "Determine a single feasibility_score of the predicted recipe between 0.0 (completely infeasible) and 1.0 (perfectly feasible) based on the aforementioned criteria,"
+            "and write a comment describing strengths and potential issues, with insight into the chosen feasability score. The comment should be around 5-6 sentences, 6 maximum.\n"
+            "Return a parseable JSON string/snippet with the entry: evaluation = { \"feasibility_score\": string, \"comment\": string }"
+        )
 
     # class Evaluation(BaseModel):
     #     feasability_score: str
@@ -195,7 +215,7 @@ def llm_eval_score(golden_xml: str, pred_xml: str, image_base64: str = None) -> 
 
     image = Image.open(image_base64)
     llm_eval_response = client.models.generate_content( # can change add more config like temperature etc
-        model="gemini-2.5-pro-exp-03-25",
+        model="gemini-2.5-flash-preview-04-17",
         config=types.GenerateContentConfig(
             system_instruction=system_message
         ),
@@ -364,37 +384,37 @@ def llm_eval_score(golden_xml: str, pred_xml: str, image_base64: str = None) -> 
 #     pred_in = parse_recipe_xml(xml_pred)
     
 
-def process_example(example):
-        """Helper function to process a single dataset example."""
-        # Process ingredients
-        if 'ingredients' in example:
-            example['parsed_ingredients'] = utils.parse_ingredients(example['ingredients'])
-        else:
-             example['parsed_ingredients'] = [] # Add empty list if key missing
+# def process_example(example):
+#         """Helper function to process a single dataset example."""
+#         # Process ingredients
+#         if 'ingredients' in example:
+#             example['parsed_ingredients'] = utils.parse_ingredients(example['ingredients'])
+#         else:
+#              example['parsed_ingredients'] = [] # Add empty list if key missing
         
-        # Process cleaned ingredients
-        if 'Cleaned_Ingredients' in example:
-            example['parsed_cleaned_ingredients'] = utils.parse_ingredients(example['Cleaned_Ingredients'])
-        else:
-             example['parsed_cleaned_ingredients'] = [] # Add empty list if key missing
+#         # Process cleaned ingredients
+#         if 'Cleaned_Ingredients' in example:
+#             example['parsed_cleaned_ingredients'] = utils.parse_ingredients(example['Cleaned_Ingredients'])
+#         else:
+#              example['parsed_cleaned_ingredients'] = [] # Add empty list if key missing
         
-        # Process instructions
-        if 'steps' in example:
-            example['instruction_steps'] = utils.parse_instructions(example['steps'])
-        else:
-            example['instruction_steps'] = [] # Add empty list if key missing
+#         # Process instructions
+#         if 'steps' in example:
+#             example['instruction_steps'] = utils.parse_instructions(example['steps'])
+#         else:
+#             example['instruction_steps'] = [] # Add empty list if key missing
         
-        # Validate and process image paths
-        if 'full_image_path' in example:
-            example['base64_image'] = utils.encode_image(example['full_image_path'])
-        else:
-            example['base64_image'] = None # Add None if key missing
+#         # Validate and process image paths
+#         if 'full_image_path' in example:
+#             example['base64_image'] = utils.encode_image(example['full_image_path'])
+#         else:
+#             example['base64_image'] = None # Add None if key missing
         
-        # Vectorize ingredients and instructions
-        example['ingredients_embeddings'] = utils.prase_ingridients_to_embeddings(example['parsed_ingredients'])
-        example['instructions_embeddings'] = utils.parse_instructions_to_embeddings(example['instruction_steps'])
+#         # Vectorize ingredients and instructions
+#         example['ingredients_embeddings'] = utils.prase_ingridients_to_embeddings(example['parsed_ingredients'])
+#         example['instructions_embeddings'] = utils.parse_instructions_to_embeddings(example['instruction_steps'])
         
-        return example
+#         return example
 
 # compute_evals(pred_in, golden_in, args.image_path)
 def compute_evals(model_output_xml, input_data_example):
@@ -474,18 +494,24 @@ def compute_evals(model_output_xml, input_data_example):
     json_string = llm_evaluation[start:end+1]
     # print(llm_evaluation)
     data = json.loads(json_string)
-    score_raw = data.get('feasability_score', data.get('feasibility_score', 0.0))
-    try:
-        score = float(score_raw)
-    except (TypeError, ValueError):
-        score = 0.0
+    
+    # score_raw = data.get("feasibility_score", data.get("feasibility_score", 0.0))
+    # try:
+    #     score = float(score_raw)
+    # except (TypeError, ValueError):
+    #     score = 0.0
 
+    # comment = data.get("comment", "")
+    
     aggregated = {
         'cosine_similarity': {
             'steps': average(cosine_scores["steps"]),
             'ingredients': average(cosine_scores["ingredients"])
         },
-        'bleu_score': bleu_scores,
+        'bleu_scores': {
+            'steps': bleu_scores["steps"],
+            'ingredients': bleu_scores["ingredients"]
+        },
         'rouge_scores': {
             'steps': {
                 'rouge1': rouge_steps_r1,
@@ -497,9 +523,11 @@ def compute_evals(model_output_xml, input_data_example):
             }
         },
         'llm_evaluation':{
-            'feasibility_score': score,
-            'comment': data.get('comment', '')
+            'feasibility_score': np.float64(data['evaluation']['feasibility_score']),
+            'comment': data['evaluation']['comment'], 
+            'full': llm_evaluation[start:end+1]
         }
     }
+    return aggregated
 
 # print(aggregated)
