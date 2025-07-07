@@ -17,8 +17,9 @@ This repository is organized as follows:
 ├── grpo_stage2_notebook.ipynb      # Jupyter Notebook to facilitate training in environments like Google Colab
 ├── utils.py                        # Utility functions for data preprocessing, XML parsing, embedding generation, etc.
 ├── evals.py                        # Python script defining evaluation metrics (Cosine Sim, BLEU, ROUGE, LLM-as-Judge)
-├── eval_pipeline.ipynb             # Jupyter Notebook for running the evaluation pipeline on model outputs
-├── README.md                       
+├── eval_pipeline.ipynb             # Jupyter Notebook for running the evaluation pipeline on model outputs                     
+├── Zero-Shot and GRPO Fine-Tuned Vision–Language Models for Inverse Cooking.pdf  # Detailed report of the project                     
+├── README.md  
 ├── requirements.txt                
 └── .gitignore                      
 ```
