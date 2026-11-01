@@ -1,3 +1,4 @@
+import os
 from ast import main
 import argparse
 from sentence_transformers import SentenceTransformer
@@ -152,7 +153,7 @@ input_xml = "<recipe> <title>Our Favorite Chocolate Chip Cookies</title> <ingred
 output_xml = "<recipe> <title>Favorite Chocolate Chip Cookies</title> <ingredients> <ingredient>2 1/4 cups all-purpose flour</ingredient> <ingredient>1 teaspoon baking soda</ingredient> <ingredient>1 teaspoon salt</ingredient> <ingredient>1 cup unsalted butter, softened</ingredient> <ingredient>3/4 cup granulated sugar</ingredient> <ingredient>3/4 cup packed brown sugar</ingredient> <ingredient>1 teaspoon vanilla extract</ingredient> <ingredient>2 large eggs</ingredient> <ingredient>2 cups semisweet chocolate chips</ingredient> </ingredients> <instructions> <step>1. Preheat oven to 350°F (175°C) and line a baking sheet with parchment paper.</step> <step>2. In a medium bowl, whisk together flour, baking soda, and salt. In a large bowl, cream butter and sugars until light and fluffy. Beat in eggs one at a time, then stir in vanilla. Gradually blend in dry ingredients until just combined.</step> <step>3. Fold in chocolate chips. Drop rounded tablespoons of dough onto prepared baking sheet, spacing 2 inches apart. Bake 10–12 minutes until edges are golden. Cool on sheet for 5 minutes before transferring to wire rack.</step> </instructions> </recipe>"
 
     
-client = genai.Client(api_key="AIzaSyD1-Ms788wc8CEu2CqwKjH3x7m95txv7w8")
+client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
 ex_cookies = "/Users/BenChung/Downloads/FavoriteChocolateChipCookies.jpg"
 
 def llm_eval_score(golden_xml: str, pred_xml: str, image_base64: str = None) -> str:
