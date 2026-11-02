@@ -1,4 +1,4 @@
-torch==2.6.0
+torch==2.13.0
 transformers @ git+https://github.com/huggingface/transformers@7eecdf2a8650306ed5fbb6150c64f99f587e004d
 datasets==3.2.0
 qwen-vl-utils==0.0.10
